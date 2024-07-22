@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -14,36 +13,49 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
 
 var (
-	dir            string
-	name           string
-	search         string
-	workers        int
-	version        string
-	displayVersion bool
+	dir     string
+	name    string
+	search  string
+	workers int
+	version string
 )
 
 func main() {
-	flag.StringVar(&dir, "dir", ".", "directory to search")
-	flag.StringVar(&name, "name", "*.txt", "file name pattern to match")
-	flag.StringVar(&search, "search", "", "string to search for")
-	flag.IntVar(&workers, "c", 4, "maximum concurrency to use for file searching")
-	flag.BoolVar(&displayVersion, "version", false, "display the version number")
-	flag.Parse()
-
-	if displayVersion {
-		fmt.Println(version)
-		return
+	rootCmd := &cobra.Command{
+		Use:   "ezf",
+		Short: "Find files easily from the command line.",
+		Run:   runFind,
 	}
 
-	if search == "" {
-		flag.Usage()
-		os.Exit(2)
+	rootCmd.Flags().StringVarP(&dir, "dir", "d", ".", "directory to search")
+	rootCmd.Flags().StringVarP(&name, "name", "n", "", "file name pattern to match")
+	rootCmd.Flags().StringVarP(&search, "search", "s", "", "string to search for")
+	rootCmd.Flags().IntVarP(&workers, "concurrency", "c", 4, "maximum concurrency to use for file searching")
+	rootCmd.MarkFlagRequired("search")
+
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Show the version of ezf.",
+		Run:   runVersion,
 	}
 
+	rootCmd.AddCommand(versionCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatalf("error: %v", err)
+	}
+}
+
+func runVersion(cmd *cobra.Command, args []string) {
+	fmt.Println(version)
+}
+
+func runFind(cmd *cobra.Command, args []string) {
 	fileChan := make(chan string, 100)
 
 	go func() {
