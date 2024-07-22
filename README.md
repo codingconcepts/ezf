@@ -37,7 +37,13 @@ Win win!
 
 ### Installation
 
-Head over to 
+Head over to the [Releases](https://github.com/codingconcepts/ezf/releases) page and download the latest version of the binary tar file for your OS and extract it.
+
+```
+tar -xvf ezf_v0.0.1_[OS][ARCH].tar.gz
+```
+
+Move the extracted ezf file into your PATH.
 
 ### Usage
 
