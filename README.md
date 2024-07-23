@@ -1,5 +1,5 @@
 # ezf
-Find files with the command line
+An easy way to search for things in files.
 
 ### Why create ezf?
 
