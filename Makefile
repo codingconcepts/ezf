@@ -23,3 +23,10 @@ release: validate_version
 	tar -zcvf ./releases/ezf_${VERSION}_windows.tar.gz ./ezf ;\
 
 	rm ./ezf
+
+run_test:
+	go run ezf.go \
+		-d . \
+		-s test \
+		-n "*.txt" \
+		-i node_modules

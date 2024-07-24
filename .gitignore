@@ -20,3 +20,6 @@ go.work.sum
 
 # Local build files
 releases/
+
+# Local testing
+harness/

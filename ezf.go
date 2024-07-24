@@ -18,11 +18,12 @@ import (
 )
 
 var (
-	dir     string
-	name    string
-	search  string
-	workers int
-	version string
+	dir         string
+	name        string
+	search      string
+	ignorePaths = []string{"node_modules"}
+	workers     int
+	version     string
 )
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 	rootCmd.Flags().StringVarP(&dir, "dir", "d", ".", "directory to search")
 	rootCmd.Flags().StringVarP(&name, "name", "n", "", "file name pattern to match")
 	rootCmd.Flags().StringVarP(&search, "search", "s", "", "string to search for")
+	rootCmd.Flags().StringSliceVarP(&ignorePaths, "ignore", "i", nil, "a path to ignore (e.g. node_modules)")
 	rootCmd.Flags().IntVarP(&workers, "concurrency", "c", 4, "maximum concurrency to use for file searching")
 	rootCmd.MarkFlagRequired("search")
 
@@ -55,6 +57,11 @@ func runVersion(cmd *cobra.Command, args []string) {
 	fmt.Println(version)
 }
 
+type result struct {
+	file string
+	line string
+}
+
 func runFind(cmd *cobra.Command, args []string) {
 	fileChan := make(chan string, 100)
 
@@ -66,15 +73,34 @@ func runFind(cmd *cobra.Command, args []string) {
 		close(fileChan)
 	}()
 
-	if err := searchFiles(fileChan, search); err != nil {
+	foundChan := make(chan result, 100)
+	finished := make(chan struct{})
+	go func() {
+		for res := range foundChan {
+			fmt.Println(res.file)
+		}
+		finished <- struct{}{}
+	}()
+
+	if err := searchFiles(fileChan, foundChan, search); err != nil {
 		log.Fatalf("error searching files: %v", err)
 	}
+
+	close(foundChan)
+	<-finished
 }
 
 func getMatchingFiles(root, pattern string, fileChan chan<- string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Skip ignored files.
+		for _, ignore := range ignorePaths {
+			if strings.Contains(path, ignore) {
+				return nil
+			}
 		}
 
 		matched, err := filepath.Match(pattern, d.Name())
@@ -89,7 +115,7 @@ func getMatchingFiles(root, pattern string, fileChan chan<- string) error {
 	})
 }
 
-func searchFiles(fileChan <-chan string, searchStr string) error {
+func searchFiles(fileChan <-chan string, foundChan chan<- result, searchStr string) error {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, workers)
 
@@ -105,7 +131,7 @@ func searchFiles(fileChan <-chan string, searchStr string) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
-				if err := searchInFile(file, searchStr); err != nil {
+				if err := searchInFile(file, searchStr, foundChan); err != nil {
 					return err
 				}
 			}
@@ -120,7 +146,7 @@ func searchFiles(fileChan <-chan string, searchStr string) error {
 	return eg.Wait()
 }
 
-func searchInFile(file, searchStr string) (err error) {
+func searchInFile(file, searchStr string, foundChan chan<- result) (err error) {
 	f, err := os.Open(file)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EACCES) {
@@ -133,7 +159,11 @@ func searchInFile(file, searchStr string) (err error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		if strings.Contains(scanner.Text(), searchStr) {
-			fmt.Println(file)
+			// fmt.Println(file)
+			foundChan <- result{
+				file: file,
+				line: scanner.Text(),
+			}
 			break
 		}
 	}
